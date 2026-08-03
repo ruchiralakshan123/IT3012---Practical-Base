@@ -50,14 +50,45 @@ class VisualGridHuntGame:
         self.score = 0
         self.steps = 0
         self.collision = False
+        self.agent_heading = 'Up'
+
+    def _direction_delta(self, direction):
+        return {
+            'Up': (0, 1),
+            'Down': (0, -1),
+            'Left': (-1, 0),
+            'Right': (1, 0),
+        }.get(direction, (0, 0))
+
+    def _cell_in_direction(self, direction):
+        dx, dy = self._direction_delta(direction)
+        return self.agent_pos[0] + dx, self.agent_pos[1] + dy
+
+    def _direction_left(self, direction):
+        return {
+            'Up': 'Left',
+            'Left': 'Down',
+            'Down': 'Right',
+            'Right': 'Up',
+        }.get(direction, 'Up')
+
+    def _direction_right(self, direction):
+        return {
+            'Up': 'Right',
+            'Right': 'Down',
+            'Down': 'Left',
+            'Left': 'Up',
+        }.get(direction, 'Up')
 
     def get_percept(self) -> dict:
+        ahead_x, ahead_y = self._cell_in_direction(self.agent_heading)
+
         return {
-            'agent_pos': list(self.agent_pos),
-            'opponent_positions': [list(op) for op in self.opponents],
-            'smells_food': tuple(self.agent_pos) in self.food_positions,
+            'wall_ahead': not (0 <= ahead_x < self.width and 0 <= ahead_y < self.height) or (ahead_x, ahead_y) in self.walls,
+            'wall_left': not (0 <= self._cell_in_direction(self._direction_left(self.agent_heading))[0] < self.width and 0 <= self._cell_in_direction(self._direction_left(self.agent_heading))[1] < self.height) or self._cell_in_direction(self._direction_left(self.agent_heading)) in self.walls,
+            'wall_right': not (0 <= self._cell_in_direction(self._direction_right(self.agent_heading))[0] < self.width and 0 <= self._cell_in_direction(self._direction_right(self.agent_heading))[1] < self.height) or self._cell_in_direction(self._direction_right(self.agent_heading)) in self.walls,
+            'food_here': tuple(self.agent_pos) in self.food_positions,
             'smells_toxin': tuple(self.agent_pos) in self.toxic_traps,
-            'hit_wall': tuple(self.agent_pos) in self.walls,
             'collision': self.collision,
             'score': self.score,
             'remaining_food': len(self.food_positions)
@@ -67,6 +98,9 @@ class VisualGridHuntGame:
         self.steps += 1
         new_pos = list(self.agent_pos)
 
+        if action in {'Up', 'Down', 'Left', 'Right'}:
+            self.agent_heading = action
+
         if action == 'Up':
             new_pos[1] = min(self.height - 1, new_pos[1] + 1)
         elif action == 'Down':
@@ -75,6 +109,8 @@ class VisualGridHuntGame:
             new_pos[0] = max(0, new_pos[0] - 1)
         elif action == 'Right':
             new_pos[0] = min(self.width - 1, new_pos[0] + 1)
+        elif action == 'Stay':
+            new_pos = list(self.agent_pos)
 
         if tuple(new_pos) in self.walls:
             self.score -= 5

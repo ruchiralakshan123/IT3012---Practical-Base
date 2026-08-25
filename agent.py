@@ -2,6 +2,7 @@
 import random
 from collections import deque
 import heapq
+import math
 class GreedyGridAgent:
     """A simple agent that tries to move around systematically to clear the grid."""
 
@@ -160,6 +161,66 @@ class SearchAgent:
 
         return None
 
+    def manhattan_distance(self, pos, goal):
+        """Return the 4-way grid distance between two positions."""
+        return abs(pos[0] - goal[0]) + abs(pos[1] - goal[1])
+
+    def euclidean_distance(self, pos, goal):
+        """Return the straight-line distance between two positions."""
+        return math.sqrt((pos[0] - goal[0]) ** 2 + (pos[1] - goal[1]) ** 2)
+
+    def astar_search(self, start_pos, goal_pos, walls, grid_size,
+                     heuristic_type='manhattan'):
+        """Return a lowest-cost path using A* search, or ``None`` if blocked.
+
+        Movement is restricted to the four cardinal directions and each action
+        costs one.  The frontier is ordered by f(n) = g(n) + h(n).
+        """
+        start, goal = tuple(start_pos), tuple(goal_pos)
+        if start == goal:
+            return []
+
+        heuristics = {
+            'manhattan': self.manhattan_distance,
+            'euclidean': self.euclidean_distance,
+        }
+        try:
+            heuristic = heuristics[heuristic_type.lower()]
+        except KeyError as error:
+            raise ValueError("heuristic_type must be 'manhattan' or 'euclidean'.") from error
+
+        wall_set = {tuple(wall) for wall in walls}
+        start_h = heuristic(start, goal)
+        frontier = [(start_h, 0, start, [])]
+        reached_states = set()
+        best_cost = {start: 0}
+
+        while frontier:
+            f_cost, g_cost, current_pos, path_taken = heapq.heappop(frontier)
+            if current_pos in reached_states:
+                continue
+            if current_pos == goal:
+                return path_taken
+
+            reached_states.add(current_pos)
+            for action, neighbour in self._neighbours(current_pos, wall_set, grid_size):
+                if neighbour in reached_states:
+                    continue
+
+                new_g_cost = g_cost + 1
+                if new_g_cost >= best_cost.get(neighbour, math.inf):
+                    continue
+
+                best_cost[neighbour] = new_g_cost
+                new_h_cost = heuristic(neighbour, goal)
+                new_f_cost = new_g_cost + new_h_cost
+                heapq.heappush(
+                    frontier,
+                    (new_f_cost, new_g_cost, neighbour, path_taken + [action]),
+                )
+
+        return None
+
     def sense_and_act(self, percept: dict) -> str:
         """Make a plan when necessary and return its next action."""
         if not self.plan:
@@ -175,11 +236,12 @@ class SearchAgent:
                 'BFS': self.bfs_search,
                 'DFS': self.dfs_search,
                 'UCS': self.ucs_search,
+                'ASTAR': self.astar_search,
             }
             try:
                 search = search_methods[self.active_algo]
             except KeyError as error:
-                raise ValueError("active_algo must be 'BFS', 'DFS', or 'UCS'.") from error
+                raise ValueError("active_algo must be 'BFS', 'DFS', 'UCS', or 'AStar'.") from error
 
             # Try nearer pellets first.  If one is enclosed, continue with the
             # next candidate instead of stopping the simulation.
@@ -194,3 +256,10 @@ class SearchAgent:
                 return 'Stay'
 
         return self.plan.pop(0)
+
+
+if __name__ == '__main__':
+    # Practical 04, Step 1.1 testing checkpoint.
+    checkpoint_agent = SearchAgent()
+    print(checkpoint_agent.manhattan_distance((0, 0), (3, 4)))  # 7
+    print(checkpoint_agent.euclidean_distance((0, 0), (3, 4)))  # 5.0

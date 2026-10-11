@@ -3,6 +3,7 @@ import random
 from collections import deque
 import heapq
 import math
+from logic_engine import KnowledgeBase
 class GreedyGridAgent:
     """A simple agent that tries to move around systematically to clear the grid."""
 
@@ -76,6 +77,15 @@ class SearchAgent:
     def __init__(self, active_algo='BFS'):
         self.plan = []
         self.active_algo = active_algo.upper()
+        self.kb = KnowledgeBase()
+        self.kb.tell_rule(
+            ['TargetVisible', 'HasDust'],
+            'SafeToEngage'
+        )
+        self.kb.tell_rule(
+            ['SafeToEngage', 'BloodseekerMissing'],
+            'Retreat'
+        )
 
     @classmethod
     def _neighbours(cls, position, walls, grid_size):
@@ -170,13 +180,15 @@ class SearchAgent:
         return math.sqrt((pos[0] - goal[0]) ** 2 + (pos[1] - goal[1]) ** 2)
 
     def astar_search(self, start_pos, goal_pos, walls, grid_size,
-                     heuristic_type='manhattan'):
+                     heuristic_type='manhattan', tile_facts=None):
         """Return a lowest-cost path using A* search, or ``None`` if blocked.
 
         Movement is restricted to the four cardinal directions and each action
         costs one.  The frontier is ordered by f(n) = g(n) + h(n).
         """
         start, goal = tuple(start_pos), tuple(goal_pos)
+        if tile_facts is None:
+            tile_facts = {}
         if start == goal:
             return []
 
@@ -205,6 +217,14 @@ class SearchAgent:
             reached_states.add(current_pos)
             for action, neighbour in self._neighbours(current_pos, wall_set, grid_size):
                 if neighbour in reached_states:
+                    continue
+
+                self.kb.clear_facts()
+                for fact in tile_facts.get(neighbour, []):
+                    self.kb.tell_fact(fact)
+                self.kb.forward_chain()
+
+                if 'Retreat' in self.kb.facts:
                     continue
 
                 new_g_cost = g_cost + 1
@@ -247,7 +267,27 @@ class SearchAgent:
             # next candidate instead of stopping the simulation.
             ordered_food = sorted(food_positions, key=lambda food: abs(food[0] - start[0]) + abs(food[1] - start[1]))
             for goal in ordered_food:
-                path = search(start, goal, walls, grid_size)
+                if self.active_algo == 'ASTAR':
+                    tile_facts = {
+                        (1, 0): [
+                            'TargetVisible',
+                            'HasDust',
+                            'BloodseekerMissing'
+                        ],
+                        (0, 1): [
+                            'TargetVisible',
+                            'HasDust'
+                        ],
+                    }
+                    path = search(
+                        start,
+                        goal,
+                        walls,
+                        grid_size,
+                        tile_facts=tile_facts,
+                    )
+                else:
+                    path = search(start, goal, walls, grid_size)
                 if path is not None:
                     self.plan = path
                     break
